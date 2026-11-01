@@ -1,7 +1,0 @@
-flask
-flask-cors
-feedparser
-google-genai
-python-dotenv
-requests
-pandas
