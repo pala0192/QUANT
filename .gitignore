@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Data and Reports
+*_report.html
+config_weights.json
+cache/
+
+# VS Code
+.vscode/
+
+# Vercel
+.vercel/
+
+.vercel

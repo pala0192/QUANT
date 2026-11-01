@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>퀀트 트레이딩 분석기</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',sans-serif;background:#0d1117;color:#e6edf3;height:100vh;overflow:hidden}
+:root{--ac:#7c3aed;--ac2:#06b6d4;--g:#10b981;--r:#ef4444;--y:#f59e0b;--card:#161b22;--bd:#30363d}
+
+/* ── 헤더 ── */
+#hdr{display:flex;align-items:center;gap:12px;padding:8px 16px;background:rgba(22,27,34,.97);border-bottom:1px solid var(--bd);position:fixed;top:0;left:0;right:0;z-index:200;height:48px;backdrop-filter:blur(10px)}
+#hdr h1{font-size:1rem;font-weight:700;background:linear-gradient(135deg,#7c3aed,#06b6d4);-webkit-background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap}
+.hdr-sel{background:#0d1117;border:1px solid var(--bd);color:#e6edf3;padding:4px 8px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:.82rem;outline:none;cursor:pointer}
+#ticker-txt{background:#0d1117;border:1px solid var(--bd);color:#e6edf3;padding:4px 10px;border-radius:6px;font-family:'Outfit',sans-serif;font-size:.82rem;width:140px;outline:none}
+#ticker-txt:focus{border-color:var(--ac)}
+#macd-badge{display:none;padding:3px 10px;border-radius:12px;font-size:.72rem;font-weight:600;animation:pulse 2s infinite}
+.b-sell{background:rgba(239,68,68,.15);border:1px solid var(--r);color:var(--r)}
+.b-buy{background:rgba(16,185,129,.15);border:1px solid var(--g);color:var(--g)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.hdr-spacer{flex:1}
+#last-upd{font-size:.72rem;color:#8b949e;white-space:nowrap}
+
+/* ── 차트 전체 화면 ── */
+#chart-wrap{position:fixed;top:48px;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:4px;padding:8px}
+#chart-main{flex:1;border-radius:8px;overflow:hidden;background:var(--card)}
+#chart-sub{height:140px;border-radius:8px;overflow:hidden;background:var(--card)}
+
+/* ── 팝업 툴바 (우측 하단 FAB → 패널) ── */
+#fab{position:fixed;bottom:24px;right:24px;z-index:300;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#7c3aed,#06b6d4);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.4rem;box-shadow:0 4px 24px rgba(124,58,237,.5);transition:all .25s}
+#fab:hover{transform:scale(1.1)}
+#fab.open{border-radius:12px 12px 50% 12px}
+
+#popup{position:fixed;bottom:86px;right:24px;z-index:299;width:320px;background:rgba(22,27,34,.97);border:1px solid var(--bd);border-radius:14px;padding:18px;backdrop-filter:blur(16px);box-shadow:0 8px 40px rgba(0,0,0,.6);transform:scale(.85) translateY(20px);transform-origin:bottom right;opacity:0;pointer-events:none;transition:all .22s cubic-bezier(.4,0,.2,1);max-height:calc(100vh - 110px);overflow-y:auto}
+#popup.open{transform:scale(1) translateY(0);opacity:1;pointer-events:all}
+
+.pop-sect{margin-bottom:14px}
+.pop-sect h3{font-size:.72rem;font-weight:600;color:#8b949e;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+label{display:block;font-size:.78rem;color:#8b949e;margin-bottom:3px;margin-top:8px}
+
+.period-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px}
+.period-btn{background:#0d1117;border:1px solid var(--bd);color:#8b949e;padding:8px 0;border-radius:8px;font-family:'Outfit',sans-serif;font-size:.85rem;cursor:pointer;text-align:center;transition:all .15s}
+.period-btn small{display:block;font-size:.68rem;font-weight:400;margin-top:2px;opacity:.8}
+.period-btn:hover{border-color:var(--ac);color:#e6edf3}
+.period-btn.active{background:rgba(124,58,237,.2);border-color:var(--ac);color:var(--ac);font-weight:600}
+
+#run-btn{width:100%;margin-top:12px;padding:10px;background:linear-gradient(135deg,#7c3aed,#5b21b6);border:none;border-radius:8px;color:#fff;font-family:'Outfit',sans-serif;font-size:.88rem;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:6px}
+#run-btn:hover{box-shadow:0 4px 16px rgba(124,58,237,.4)}
+#run-btn:disabled{opacity:.5;cursor:not-allowed}
+.spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── 결과 섹션 ── */
+#res-sect{display:none}
+.big-num{text-align:center;padding:10px 0}
+.big-num .val{font-size:2.4rem;font-weight:700;line-height:1}
+.big-num .lbl{font-size:.72rem;color:#8b949e;margin-top:2px}
+.gauge{height:8px;background:#1c2128;border-radius:4px;overflow:hidden;margin:6px 0}
+.gauge-f{height:100%;border-radius:4px;transition:width .8s cubic-bezier(.4,0,.2,1)}
+.row4{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:8px 0}
+.mini-card{background:#0d1117;border:1px solid var(--bd);border-radius:8px;padding:8px 10px}
+.mini-card .mk{font-size:.65rem;color:#8b949e;margin-bottom:2px}
+.mini-card .mv{font-size:.95rem;font-weight:600}
+.sbar-row{display:flex;align-items:center;gap:6px;margin:5px 0}
+.sbar-lbl{font-size:.7rem;color:#8b949e;width:48px;flex-shrink:0}
+.sbar-wrap{flex:1;height:6px;background:#1c2128;border-radius:3px;overflow:hidden}
+.sbar-f{height:100%;border-radius:3px;transition:width .8s}
+.sbar-num{font-size:.7rem;width:34px;text-align:right}
+.divider{border:none;border-top:1px solid var(--bd);margin:10px 0}
+.news-head{font-size:.72rem;color:#8b949e;padding:3px 0;border-bottom:1px solid rgba(48,54,61,.4);line-height:1.4}
+.kw-tag{display:inline-block;padding:2px 7px;border-radius:10px;font-size:.65rem;margin:2px;background:rgba(139,148,158,.1);border:1px solid rgba(139,148,158,.2);color:#8b949e}
+.interp{font-size:.72rem;color:#b0bec5;line-height:1.6;white-space:pre-wrap}
+.prow{display:flex;justify-content:space-between;font-size:.75rem;padding:4px 0;border-bottom:1px solid rgba(48,54,61,.3)}
+.prow .pv{font-weight:600}
+.g{color:var(--g)}.r{color:var(--r)}.y{color:var(--y)}
+.err{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px;font-size:.78rem;color:var(--r)}
+</style>
+</head>
+<body>
+
+<!-- 헤더 툴바 -->
+<div id="hdr">
+  <h1>📈 퀀트 분석기</h1>
+  <select class="hdr-sel" id="wl-sel" onchange="pickWatchlist(this.value)">
+  </select>
+  <span id="stock-nm" style="font-size:.78rem;color:#8b949e"></span>
+  <div class="hdr-spacer"></div>
+  <span id="macd-badge"></span>
+  <span id="last-upd"></span>
+</div>
+
+<!-- 차트 영역 (전체 화면) -->
+<div id="chart-wrap">
+  <div id="chart-main"></div>
+  <div id="chart-sub"></div>
+</div>
+
+<!-- FAB 버튼 -->
+<button id="fab" onclick="togglePopup()" title="분석 패널 열기">🎯</button>
+
+<!-- 팝업 패널 -->
+<div id="popup">
+  <!-- 입력 섹션 -->
+  <div class="pop-sect">
+    <h3>🎯 투자 시나리오</h3>
+
+    <label>홀딩 기간 · 목표 수익률</label>
+    <div class="period-grid" id="period-grid"></div>
+  </div>
+
+  <button id="run-btn" onclick="runAnalysis()">
+    <span class="spin" id="spin"></span>
+    <span id="btn-txt">▶ 분석 시작</span>
+  </button>
+
+  <!-- 결과 섹션 -->
+  <div id="res-sect">
+    <hr class="divider">
+    <div id="res-body"></div>
+  </div>
+</div>
+
+<script>
+let selPeriod = 'short';
+let popOpen = false;
+let macdTimer = null;
+let currentTicker = '373220.KS';
+
+/* 기간 버튼 생성 (단기/장기 고정, 목표 수익률은 서버 설정값) */
+const grid = document.getElementById('period-grid');
+fetch('/api/periods').then(r=>r.json()).then(d=>{
+  if(!d.success) return;
+  d.periods.forEach(p => {
+    const b = document.createElement('button');
+    b.className = 'period-btn' + (p.label === selPeriod ? ' active' : '');
+    b.innerHTML = `${p.name}<small>${p.days}거래일 · 목표 +${p.target_return_pct}%</small>`;
+    b.onclick = () => { selPeriod = p.label; grid.querySelectorAll('.period-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); };
+    grid.appendChild(b);
+  });
+});
+
+/* 관심 종목 로드 */
+fetch('/api/watchlist').then(r=>r.json()).then(d=>{
+  if(!d.success) return;
+  const sel = document.getElementById('wl-sel');
+  sel.innerHTML = ''; // 기본 옵션 제거
+  Object.entries(d.watchlist).forEach(([t,n])=>{
+    const sector = d.sectors && d.sectors[t] ? d.sectors[t] : '';
+    const o = document.createElement('option'); 
+    o.value=t; 
+    o.textContent=`${sector} ${n}(${t})`; 
+    sel.appendChild(o);
+  });
+  if(sel.options.length > 0) {
+    sel.value = currentTicker;
+    pickWatchlist(currentTicker);
+  }
+});
+
+function pickWatchlist(v){ 
+    if(!v) return; 
+    currentTicker = v;
+}
+
+function togglePopup(){
+  popOpen=!popOpen;
+  document.getElementById('popup').classList.toggle('open',popOpen);
+  document.getElementById('fab').classList.toggle('open',popOpen);
+  document.getElementById('fab').textContent = popOpen ? '✕' : '🎯';
+}
+
+/* 색상 헬퍼 */
+const gc = v => v>=0.3?'var(--g)':v<=-0.3?'var(--r)':'var(--y)';
+const pc = p => p>=65?'var(--g)':p<=35?'var(--r)':'var(--y)';
+const bw = v => Math.round((v+1)/2*100);
+
+async function runAnalysis(){
+  const ticker = document.getElementById('wl-sel').value.trim().toUpperCase();
+  if(!ticker){ alert('종목을 선택하세요'); return; }
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled=true; document.getElementById('spin').style.display='block'; document.getElementById('btn-txt').textContent='분석 중...';
+  document.getElementById('res-sect').style.display='none';
+
+  try{
+    const r = await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ticker, period_label:selPeriod})});
+    const d = await r.json();
+    if(!d.success) throw new Error(d.error);
+    currentTicker = ticker;
+    document.getElementById('stock-nm').textContent = d.stock_name||'';
+    document.getElementById('last-upd').textContent = `기준: ${d.analysis_date}`;
+    renderChart(d.chart_data, ticker, d.stock_name);
+    renderResult(d);
+    startMacd(ticker);
+  } catch(e){
+    document.getElementById('res-sect').style.display='block';
+    document.getElementById('res-body').innerHTML=`<div class="err">❌ ${e.message}</div>`;
+  } finally {
+    btn.disabled=false; document.getElementById('spin').style.display='none'; document.getElementById('btn-txt').textContent='▶ 분석 시작';
+  }
+}
+
+function renderChart(cd, ticker, name){
+  if(!cd||!cd.dates||!cd.dates.length) return;
+  const title = name?`${name}(${ticker})`:ticker;
+  const dark = {paper_bgcolor:'#161b22',plot_bgcolor:'#161b22',font:{color:'#e6edf3',family:'Outfit'}};
+  const xgrid = {gridcolor:'#21262d',linecolor:'#30363d'};
+
+  const traces = [{
+    type:'candlestick',x:cd.dates,open:cd.open,high:cd.high,low:cd.low,close:cd.close,
+    name:'가격',increasing:{line:{color:'#10b981'},fillcolor:'rgba(16,185,129,.8)'},
+    decreasing:{line:{color:'#ef4444'},fillcolor:'rgba(239,68,68,.8)'}
+  }];
+  if(cd.bbu?.length) traces.push({type:'scatter',x:cd.dates,y:cd.bbu,name:'BB상단',line:{color:'rgba(139,148,158,.35)',width:1}});
+  if(cd.bbl?.length) traces.push({type:'scatter',x:cd.dates,y:cd.bbl,name:'BB하단',line:{color:'rgba(139,148,158,.35)',width:1},fill:'tonexty',fillcolor:'rgba(139,148,158,.04)'});
+  if(cd.ema20?.length) traces.push({type:'scatter',x:cd.dates,y:cd.ema20,name:'EMA20',line:{color:'#f59e0b',width:1.5}});
+  if(cd.ema60?.length) traces.push({type:'scatter',x:cd.dates,y:cd.ema60,name:'EMA60',line:{color:'#7c3aed',width:1.5}});
+
+  Plotly.react('chart-main',traces,{...dark,title:{text:title,font:{color:'#e6edf3',size:13}},
+    xaxis:{...xgrid,rangeslider:{visible:false}},yaxis:{...xgrid},
+    legend:{bgcolor:'rgba(22,27,34,.85)',bordercolor:'#30363d',borderwidth:1},
+    margin:{l:52,r:10,t:36,b:28}},{responsive:true,displayModeBar:false});
+
+  if(cd.macd?.length){
+    const hc=(cd.macd_hist||[]).map(v=>v>=0?'rgba(16,185,129,.6)':'rgba(239,68,68,.6)');
+    Plotly.react('chart-sub',[
+      {type:'scatter',x:cd.dates,y:cd.macd,name:'MACD',line:{color:'#06b6d4',width:1.5}},
+      {type:'scatter',x:cd.dates,y:cd.macd_signal,name:'Signal',line:{color:'#f59e0b',width:1.5}},
+      {type:'bar',x:cd.dates,y:cd.macd_hist,name:'Hist',marker:{color:hc}}
+    ],{...dark,xaxis:{...xgrid},yaxis:{...xgrid},legend:{bgcolor:'rgba(22,27,34,.85)',orientation:'h',y:1.15},
+      margin:{l:52,r:10,t:8,b:28}},{responsive:true,displayModeBar:false});
+  }
+}
+
+function renderResult(d){
+  const fp=d.feasibility_pct, bs=d.buy_sell_score;
+  const brkd=d.breakdown||{}, vol=d.volatility||{}, news=d.news||{}, interp=d.interpretation||{};
+  const bsLbl=bs>=0.2?`<span style="color:var(--g);font-weight:700">매수 ▲</span>`:bs<=-0.2?`<span style="color:var(--r);font-weight:700">매도 ▼</span>`:`<span style="color:var(--y);font-weight:700">중립 ─</span>`;
+
+  let h=`
+  <div class="big-num">
+    <div class="val" style="color:${pc(fp)}">${fp}%</div>
+    <div class="lbl">실현가능성 · ${d.holding_period||selPeriod}</div>
+  </div>
+  <div class="gauge"><div class="gauge-f" style="width:${fp}%;background:${pc(fp)}"></div></div>
+  <div style="text-align:center;margin:6px 0;font-size:.85rem">${bsLbl} <span style="color:${gc(bs)};font-weight:700;font-size:1rem">${bs>=0?'+':''}${bs.toFixed(3)}</span></div>
+
+  <div class="row4">
+    <div class="mini-card"><div class="mk">📰 뉴스</div><div class="mv" style="color:${gc(brkd.news||0)}">${(brkd.news||0)>=0?'+':''}${(brkd.news||0).toFixed(2)}</div></div>
+    <div class="mini-card"><div class="mk">📈 기술 (추세)</div><div class="mv" style="color:${gc(brkd.technical||0)}">${(brkd.technical||0)>=0?'+':''}${(brkd.technical||0).toFixed(2)}</div></div>
+    <div class="mini-card"><div class="mk">📉 지표 (오실레이터)</div><div class="mv" style="color:${gc(brkd.indicator||0)}">${(brkd.indicator||0)>=0?'+':''}${(brkd.indicator||0).toFixed(2)}</div></div>
+    ${brkd.options!=null
+      ? `<div class="mini-card"><div class="mk">🎲 옵션</div><div class="mv" style="color:${gc(brkd.options)}">${brkd.options>=0?'+':''}${brkd.options.toFixed(2)}</div></div>`
+      : `<div class="mini-card"><div class="mk">🎲 통계 확률 (HV)</div><div class="mv" style="color:${pc(vol.hist_probability||0)}">${vol.hist_probability||0}%</div></div>`}
+  </div>
+  <div style="text-align:center;font-size:.68rem;color:#8b949e">실현가능성 = 모델 ${d.model_probability}% × 50% + 통계 ${vol.hist_probability||0}% × 50%</div>
+
+  <hr class="divider">
+  <div class="prow"><span>현재가</span><span class="pv">${(d.current_price||0).toLocaleString()}</span></div>
+  <div class="prow"><span>목표가</span><span class="pv g">+${interp.expected_return_pct?.toFixed(2)||0}% → ${(interp.target_price||0).toLocaleString()}</span></div>
+  <div class="prow"><span>손절가</span><span class="pv r">-${interp.risk_pct?.toFixed(2)||0}% → ${(interp.stop_loss||0).toLocaleString()}</span></div>
+  <div class="prow"><span>역사적 변동성</span><span class="pv">${vol.hist_vol_pct||0}%/yr</span></div>`;
+
+  if(news.count>0){
+    h+=`<hr class="divider"><div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">📰 뉴스 감성: <b style="color:${gc(news.score||0)}">${news.sentiment||'중립'}</b> · ${news.count}건</div>`;
+    if(news.reason) h+=`<div style="font-size:.68rem;color:#6e7681;font-style:italic;margin-bottom:4px">"${news.reason}"</div>`;
+    (news.key_topics||[]).forEach(t=>{ h+=`<span class="kw-tag">${t}</span>`; });
+    if((news.headlines||[]).length){ h+='<div style="margin-top:6px">'; (news.headlines||[]).forEach(hl=>{ h+=`<div class="news-head">· ${hl}</div>`; }); h+='</div>'; }
+  }
+
+  if(interp.text){
+    h+=`<hr class="divider"><div style="font-size:.7rem;color:#8b949e;margin-bottom:4px">💡 보조지표 해석</div><div class="interp">${interp.text}</div>`;
+  }
+
+  document.getElementById('res-body').innerHTML=h;
+  document.getElementById('res-sect').style.display='block';
+}
+
+function updateMacdBadge(alert){
+  const b=document.getElementById('macd-badge');
+  if(alert.triggered){ b.style.display='inline-block'; b.className=alert.type==='sell'?'b-sell':'b-buy'; b.textContent=alert.message; }
+  else { b.style.display='none'; }
+}
+
+function startMacd(ticker){
+  if(macdTimer) clearInterval(macdTimer);
+  const poll=()=>fetch(`/api/macd-alert/${ticker}`).then(r=>r.json()).then(d=>{ if(d.success) updateMacdBadge(d.macd_alert); }).catch(()=>{});
+  poll();
+  macdTimer=setInterval(poll,5*60*1000);
+}
+
+/* 초기 빈 차트 */
+const dark={paper_bgcolor:'#161b22',plot_bgcolor:'#161b22',font:{color:'#e6edf3',family:'Outfit'}};
+const hint=(id,msg)=>Plotly.newPlot(id,[],{...dark,margin:{l:52,r:10,t:28,b:28},
+  annotations:[{text:msg,x:.5,y:.5,xref:'paper',yref:'paper',showarrow:false,font:{size:13,color:'#8b949e'}}]},{responsive:true,displayModeBar:false});
+hint('chart-main','종목을 선택하고 🎯 버튼을 눌러 분석하세요');
+hint('chart-sub','MACD 차트');
+</script>
+</body>
+</html>

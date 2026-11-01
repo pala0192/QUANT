@@ -1,0 +1,24 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "DMserver.py",
+      "use": "@vercel/python",
+      "config": {"requirementsFile": "DMrequirements.txt"}
+    }
+  ],
+  "routes": [
+    {
+      "src": "/dm/(.*)",
+      "dest": "DMserver.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "server.py"
+    }
+  ]
+}

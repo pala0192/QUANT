@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>고객 이탈 분석 — 이커머스</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<style>
+  :root {
+    --bg: #0f0f13;
+    --surface: #1a1a24;
+    --border: #2a2a3a;
+    --ac: #7c3aed;
+    --ac2: #06b6d4;
+    --g: #10b981;
+    --r: #ef4444;
+    --warn: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+
+  header {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(15,15,19,.95); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 700; }
+  .badge {
+    background: linear-gradient(135deg, var(--ac), var(--ac2));
+    color: #fff; font-size: .72rem; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px;
+  }
+  .muted { color: var(--muted); font-size: .8rem; margin-left: auto; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    gap: 20px;
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* ── 왼쪽 패널 ── */
+  .left-panel { display: flex; flex-direction: column; gap: 16px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px;
+  }
+  .card h2 { font-size: .85rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px; }
+
+  /* 업로드 존 */
+  .upload-zone {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 32px 20px; text-align: center; cursor: pointer;
+    transition: border-color .2s, background .2s;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--ac); background: rgba(124,58,237,.06); }
+  .upload-zone .icon { font-size: 2.2rem; margin-bottom: 10px; }
+  .upload-zone p { font-size: .85rem; color: var(--muted); }
+  .upload-zone .filename { color: var(--g); font-weight: 600; margin-top: 8px; font-size: .9rem; }
+  #fileInput { display: none; }
+
+  .btn {
+    width: 100%; padding: 12px; border-radius: 8px; border: none;
+    font-size: .95rem; font-weight: 600; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: opacity .2s, transform .1s;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn-primary { background: linear-gradient(135deg, var(--ac), #5b21b6); color: #fff; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .spinner {
+    width: 16px; height: 16px; border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin .7s linear infinite; display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 뉴스 목록 */
+  .news-list { display: flex; flex-direction: column; gap: 8px; max-height: 340px; overflow-y: auto; }
+  .news-item {
+    background: rgba(255,255,255,.03); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .news-item .source { font-size: .68rem; color: var(--ac2); font-weight: 600; margin-bottom: 4px; }
+  .news-item .title { font-size: .8rem; line-height: 1.4; }
+  .news-loading { color: var(--muted); font-size: .82rem; text-align: center; padding: 20px; }
+
+  /* ── 오른쪽 결과 패널 ── */
+  .right-panel { display: flex; flex-direction: column; gap: 16px; }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 400px; color: var(--muted); gap: 12px;
+  }
+  .empty-state .icon { font-size: 3rem; }
+  .empty-state p { font-size: .9rem; }
+
+  /* 결과 그리드 */
+  .result-grid { display: none; flex-direction: column; gap: 16px; }
+  .result-grid.show { display: flex; }
+
+  .insight-card {
+    background: linear-gradient(135deg, rgba(124,58,237,.15), rgba(6,182,212,.1));
+    border: 1px solid rgba(124,58,237,.4); border-radius: 12px; padding: 18px 22px;
+  }
+  .insight-card .label { font-size: .72rem; color: var(--ac2); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; }
+  .insight-card .text { font-size: 1rem; font-weight: 500; line-height: 1.5; }
+
+  .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .metric {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px; text-align: center;
+  }
+  .metric .val { font-size: 1.8rem; font-weight: 700; }
+  .metric .lbl { font-size: .72rem; color: var(--muted); margin-top: 4px; }
+  .risk-high { color: var(--r); }
+  .risk-mid { color: var(--warn); }
+  .risk-low { color: var(--g); }
+
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .chart-card h3 { font-size: .8rem; color: var(--muted); font-weight: 600; text-transform: uppercase; margin-bottom: 12px; }
+
+  /* 추천 카드 */
+  .reco-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+  .reco-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px; display: flex; gap: 10px; align-items: flex-start;
+  }
+  .reco-num {
+    min-width: 24px; height: 24px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--ac), var(--ac2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: .75rem; font-weight: 700; color: #fff; flex-shrink: 0;
+  }
+  .reco-text { font-size: .82rem; line-height: 1.5; }
+
+  /* CSV 요약 */
+  .csv-summary {
+    background: rgba(255,255,255,.02); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px;
+    font-family: monospace; font-size: .75rem; color: var(--muted);
+    white-space: pre-wrap; max-height: 160px; overflow-y: auto;
+  }
+
+  /* 에러 */
+  .error-banner {
+    background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.4);
+    border-radius: 10px; padding: 14px 18px; color: var(--r); font-size: .88rem;
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .charts-row { grid-template-columns: 1fr; }
+    .metrics-row { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 고객 이탈 분석</h1>
+  <span class="badge">이커머스</span>
+  <span class="muted">RSS 수집 → Gemini AI 분석</span>
+</header>
+
+<div class="layout">
+
+  <!-- 왼쪽: 업로드 + 뉴스 -->
+  <div class="left-panel">
+
+    <div class="card">
+      <h2>CSV 업로드</h2>
+      <div class="upload-zone" id="uploadZone">
+        <div class="icon">📂</div>
+        <p>CSV 파일을 드래그하거나 클릭하여 업로드</p>
+        <p style="margin-top:6px;font-size:.75rem;">customer_id, purchase_count, days_since_last_purchase 등</p>
+        <div class="filename" id="fileName" style="display:none;"></div>
+      </div>
+      <input type="file" id="fileInput" accept=".csv">
+      <div style="margin-top:14px;">
+        <button class="btn btn-primary" id="analyzeBtn" disabled>
+          <div class="spinner" id="spinner"></div>
+          <span id="btnText">CSV를 먼저 업로드하세요</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>외부 이탈 뉴스 (RSS 수집)</h2>
+      <div class="news-list" id="newsList">
+        <div class="news-loading">뉴스 수집 중...</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 오른쪽: 결과 -->
+  <div class="right-panel">
+
+    <div class="error-banner" id="errorBanner"></div>
+
+    <div class="empty-state" id="emptyState">
+      <div class="icon">🔍</div>
+      <p>CSV를 업로드하고 분석 버튼을 누르면 결과가 표시됩니다.</p>
+    </div>
+
+    <div class="result-grid" id="resultGrid">
+
+      <div class="insight-card">
+        <div class="label">핵심 인사이트</div>
+        <div class="text" id="keyInsight"></div>
+      </div>
+
+      <div class="metrics-row">
+        <div class="metric">
+          <div class="val" id="metricScore"></div>
+          <div class="lbl">전체 이탈 위험도</div>
+        </div>
+        <div class="metric">
+          <div class="val risk-high" id="metricHigh"></div>
+          <div class="lbl">고위험 고객</div>
+        </div>
+        <div class="metric">
+          <div class="val" id="metricRows"></div>
+          <div class="lbl">분석 고객 수</div>
+        </div>
+      </div>
+
+      <div class="charts-row">
+        <div class="chart-card">
+          <h3>상위 이탈 요인</h3>
+          <div id="barChart" style="height:240px;"></div>
+        </div>
+        <div class="chart-card">
+          <h3>위험 분포</h3>
+          <div id="donutChart" style="height:240px;"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>이탈 방지 추천 액션</h2>
+        <div class="reco-list" id="recoList"></div>
+      </div>
+
+      <div class="card">
+        <h2>CSV 데이터 요약</h2>
+        <div class="csv-summary" id="csvSummary"></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const uploadZone = document.getElementById('uploadZone');
+const fileInput  = document.getElementById('fileInput');
+const fileName   = document.getElementById('fileName');
+const analyzeBtn = document.getElementById('analyzeBtn');
+const btnText    = document.getElementById('btnText');
+const spinner    = document.getElementById('spinner');
+const newsList   = document.getElementById('newsList');
+const errorBanner= document.getElementById('errorBanner');
+const emptyState = document.getElementById('emptyState');
+const resultGrid = document.getElementById('resultGrid');
+
+let selectedFile = null;
+
+// ── 파일 선택 ──
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f && f.name.endsWith('.csv')) setFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) setFile(fileInput.files[0]);
+});
+
+function setFile(f) {
+  selectedFile = f;
+  fileName.textContent = f.name;
+  fileName.style.display = 'block';
+  analyzeBtn.disabled = false;
+  btnText.textContent = '분석 시작';
+}
+
+// ── 뉴스 미리보기 로드 ──
+async function loadNews() {
+  try {
+    const res = await fetch('/dm/api/news-preview');
+    const data = await res.json();
+    if (!data.success || !data.articles.length) {
+      newsList.innerHTML = '<div class="news-loading">수집된 뉴스가 없습니다.</div>';
+      return;
+    }
+    newsList.innerHTML = data.articles.map(a => `
+      <div class="news-item">
+        <div class="source">${a.source}</div>
+        <div class="title">${a.title}</div>
+      </div>
+    `).join('');
+  } catch {
+    newsList.innerHTML = '<div class="news-loading">뉴스 수집 실패</div>';
+  }
+}
+
+// ── 분석 요청 ──
+analyzeBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  setLoading(true);
+  hideError();
+
+  const form = new FormData();
+  form.append('file', selectedFile);
+
+  try {
+    const res = await fetch('/dm/api/analyze', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!data.success) { showError(data.error); return; }
+    renderResult(data);
+  } catch (e) {
+    showError('서버 오류: ' + e.message);
+  } finally {
+    setLoading(false);
+  }
+});
+
+function setLoading(on) {
+  analyzeBtn.disabled = on;
+  spinner.style.display = on ? 'block' : 'none';
+  btnText.textContent = on ? '분석 중...' : '분석 시작';
+}
+
+function showError(msg) {
+  errorBanner.textContent = '⚠ ' + msg;
+  errorBanner.style.display = 'block';
+  emptyState.style.display = 'flex';
+  resultGrid.classList.remove('show');
+}
+function hideError() { errorBanner.style.display = 'none'; }
+
+// ── 결과 렌더링 ──
+function renderResult(d) {
+  emptyState.style.display = 'none';
+  resultGrid.classList.add('show');
+
+  document.getElementById('keyInsight').textContent = d.key_insight || '-';
+
+  const score = d.overall_risk_score ?? 0;
+  const scoreEl = document.getElementById('metricScore');
+  scoreEl.textContent = score + '/100';
+  scoreEl.className = 'val ' + (score >= 70 ? 'risk-high' : score >= 40 ? 'risk-mid' : 'risk-low');
+
+  const h = d.risk_distribution?.high_pct ?? 0;
+  document.getElementById('metricHigh').textContent = h + '%';
+  document.getElementById('metricRows').textContent = (d.row_count ?? 0).toLocaleString() + '명';
+  document.getElementById('csvSummary').textContent = d.csv_summary || '';
+
+  // 바 차트 (이탈 요인)
+  const factors = d.top_churn_factors || [];
+  Plotly.newPlot('barChart', [{
+    type: 'bar',
+    orientation: 'h',
+    x: factors.map(f => f.weight),
+    y: factors.map(f => f.factor),
+    text: factors.map(f => f.weight + '%'),
+    textposition: 'outside',
+    marker: { color: factors.map((_, i) => `hsl(${260 - i*20},70%,60%)`) }
+  }], {
+    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+    margin: { l: 120, r: 40, t: 10, b: 30 },
+    xaxis: { range: [0, 110], showgrid: false, color: '#64748b', ticksuffix: '%' },
+    yaxis: { color: '#e2e8f0', automargin: true },
+    font: { color: '#e2e8f0', size: 11 },
+  }, { responsive: true, displayModeBar: false });
+
+  // 도넛 차트 (위험 분포)
+  const dist = d.risk_distribution || {};
+  Plotly.newPlot('donutChart', [{
+    type: 'pie', hole: .55,
+    values: [dist.high_pct ?? 0, dist.medium_pct ?? 0, dist.low_pct ?? 0],
+    labels: ['고위험', '중위험', '저위험'],
+    marker: { colors: ['#ef4444', '#f59e0b', '#10b981'] },
+    textinfo: 'label+percent',
+    textfont: { color: '#e2e8f0', size: 11 }
+  }], {
+    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+    margin: { l: 20, r: 20, t: 10, b: 10 },
+    showlegend: false,
+    font: { color: '#e2e8f0' }
+  }, { responsive: true, displayModeBar: false });
+
+  // 추천 액션
+  const recos = d.recommendations || [];
+  document.getElementById('recoList').innerHTML = recos.map((r, i) => `
+    <div class="reco-item">
+      <div class="reco-num">${i + 1}</div>
+      <div class="reco-text">${r}</div>
+    </div>
+  `).join('');
+}
+
+loadNews();
+</script>
+</body>
+</html>
