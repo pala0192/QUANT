@@ -4,7 +4,12 @@ server.py - 퀀트 트레이딩 분석 Flask REST API 서버
 접속: http://localhost:5000
 """
 import sys
-sys.stdout.reconfigure(encoding='utf-8')
+# 로컬 Windows 콘솔 한글 출력용 (Vercel 등 reconfigure 미지원 환경에서는 건너뜀)
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 from config import (HOLDING_PERIODS, TARGET_RETURNS, PERIOD_NAMES, DEFAULT_PERIOD,
                     period_label_to_days, target_return_for)
 
